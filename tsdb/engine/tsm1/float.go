@@ -1,5 +1,79 @@
 package tsm1
 
+// #include <stdio.h>
+// #include <errno.h>
+// #include <stddef.h>
+// #include <stdlib.h>
+// #include <string.h>
+// #include <sys/types.h>
+// #include <sys/ipc.h>
+// #include <sys/msg.h>
+//
+// extern int enmqin;
+// extern int enmqout;
+// extern int demqin;
+// extern int demqout;
+// long comp_id = 1;
+// long decomp_id = 1;
+// struct msg_de {
+//         long id;
+//         long size;
+//	   double error_bound;
+//         double data[1021];
+// };
+//
+// struct msg_en {
+//         long id;
+//         long size;
+//         long length;
+//         unsigned char data[8168];
+// };
+//
+// struct msg_en* compress(void* data, size_t len, double eb) {
+// 	struct msg_de msg_de;
+// 	struct msg_en* msg_en = malloc(sizeof(*msg_en));
+//	do {
+// 		msg_de.id = __atomic_fetch_add(&comp_id, 1, __ATOMIC_RELAXED);
+//		msg_de.id &= 0xfffffffffffffffL;
+// 	} while(msg_de.id == 0);
+// 	msg_de.size = len;
+//	msg_de.error_bound = eb;
+// 	memcpy(msg_de.data, data, sizeof(double) * len);
+//	long r;
+// 	do {
+// 		r = msgsnd(enmqin, &msg_de, sizeof(msg_de), 0);
+// 	} while (r == -1 && errno == 4);
+// 	if (r == -1) printf("Send error: %d\n", errno);
+// 	do {
+// 		r = msgrcv(enmqout, msg_en, sizeof(*msg_en), msg_de.id, 0);
+// 	} while (r == -1 && errno == 4);
+// 	if (r == -1) printf("Receive error: %d\n", errno);
+// 	return msg_en;
+// }
+//
+// struct msg_de* decompress(void* data, size_t size, size_t len) {
+//	int r;
+// 	struct msg_en msg_en;
+// 	struct msg_de* msg_de = malloc(sizeof(*msg_de));
+// 	do {
+// 		msg_en.id = __atomic_fetch_add(&decomp_id, 1, __ATOMIC_RELAXED);
+// 		msg_en.id &= 0xfffffffffffffffL;
+// 	} while(msg_en.id == 0);
+// 	msg_en.size = size;
+// 	msg_en.length = len;
+// 	memcpy(msg_en.data, data, size);
+//	do {
+//		r = msgsnd(demqin, &msg_en, sizeof(msg_en), 0);
+// 	} while (r == -1 && errno == 4);
+//	if (r == -1) printf("Msgsnd Error: %d\n", errno);
+//	do {
+// 		r = msgrcv(demqout, msg_de, sizeof(*msg_de), msg_en.id, 0);
+// 	} while (r == -1 && errno == 4);
+//	if (r == -1) printf("Msgrcv Error: %d\n", errno);
+// 	return msg_de;
+// }
+import "C"
+
 /*
 This code is originally from: https://github.com/dgryski/go-tsz and has been modified to remove
 the timestamp compression functionality.
@@ -10,268 +84,126 @@ this version.
 */
 
 import (
-	"bytes"
-	"fmt"
-	"math"
-	"math/bits"
+	// "fmt"
+	// "os"
+	// "reflect"
+	"errors"
+	"unsafe"
 
-	"github.com/dgryski/go-bitstream"
+	"github.com/influxdata/influxdb/v2/tsdb"
 )
 
 // Note: an uncompressed format is not yet implemented.
 // floatCompressedGorilla is a compressed format using the gorilla paper encoding
+const floatCompressedNone = 0
 const floatCompressedGorilla = 1
+const floatCompressedSZ = 2
 
 // uvnan is the constant returned from math.NaN().
 const uvnan = 0x7FF8000000000001
 
+var error_bound float64
+
 // FloatEncoder encodes multiple float64s into a byte slice.
 type FloatEncoder struct {
-	val float64
-	err error
-
-	leading  uint64
-	trailing uint64
-
-	buf bytes.Buffer
-	bw  *bitstream.BitWriter
-
-	first    bool
-	finished bool
+	buf []float64
 }
 
 // NewFloatEncoder returns a new FloatEncoder.
 func NewFloatEncoder() *FloatEncoder {
+	buf := make([]float64, 0, tsdb.DefaultMaxPointsPerBlock)
 	s := FloatEncoder{
-		first:   true,
-		leading: ^uint64(0),
+		buf,
 	}
-
-	s.bw = bitstream.NewWriter(&s.buf)
-	s.buf.WriteByte(floatCompressedGorilla << 4)
 
 	return &s
 }
 
 // Reset sets the encoder back to its initial state.
 func (s *FloatEncoder) Reset() {
-	s.val = 0
-	s.err = nil
-	s.leading = ^uint64(0)
-	s.trailing = 0
-	s.buf.Reset()
-	s.buf.WriteByte(floatCompressedGorilla << 4)
-
-	s.bw.Resume(0x0, 8)
-
-	s.finished = false
-	s.first = true
+	s.buf = s.buf[0:0]
 }
 
 // Bytes returns a copy of the underlying byte buffer used in the encoder.
 func (s *FloatEncoder) Bytes() ([]byte, error) {
-	return s.buf.Bytes(), s.err
+	var res []byte
+	if len(s.buf) <= 20 {
+		res = make([]byte, len(s.buf)*8+1)
+		res[0] = floatCompressedNone
+		C.memcpy(
+			unsafe.Pointer(&res[1]),
+			unsafe.Pointer(&s.buf[0]),
+			C.size_t(len(s.buf)*8))
+	} else {
+		// fmt.Printf("Calling SZ_compress %v %v\n", &s.buf[0], len(s.buf))
+		msg := C.compress(unsafe.Pointer(&s.buf[0]), C.size_t(len(s.buf)), C.double(error_bound))
+		defer C.free(unsafe.Pointer(msg))
+
+		// fmt.Printf("Float encoder out: %v (%v)\n", out, outSize);
+		res = make([]byte, int(msg.size)+3)
+		res[0] = floatCompressedSZ
+		res[1] = byte(len(s.buf) & 0xff)
+		res[2] = byte(len(s.buf) >> 8)
+		C.memcpy(
+			unsafe.Pointer(&res[3]),
+			unsafe.Pointer(&msg.data[0]),
+			C.size_t(msg.size))
+	}
+	return res, nil
 }
 
 // Flush indicates there are no more values to encode.
-func (s *FloatEncoder) Flush() {
-	if !s.finished {
-		// write an end-of-stream record
-		s.finished = true
-		s.Write(math.NaN())
-		s.bw.Flush(bitstream.Zero)
-	}
-}
+func (s *FloatEncoder) Flush() {}
 
 // Write encodes v to the underlying buffer.
 func (s *FloatEncoder) Write(v float64) {
-	// Only allow NaN as a sentinel value
-	if math.IsNaN(v) && !s.finished {
-		s.err = fmt.Errorf("unsupported value: NaN")
-		return
-	}
-	if s.first {
-		// first point
-		s.val = v
-		s.first = false
-		s.bw.WriteBits(math.Float64bits(v), 64)
-		return
-	}
-
-	vDelta := math.Float64bits(v) ^ math.Float64bits(s.val)
-
-	if vDelta == 0 {
-		s.bw.WriteBit(bitstream.Zero)
-	} else {
-		s.bw.WriteBit(bitstream.One)
-
-		leading := uint64(bits.LeadingZeros64(vDelta))
-		trailing := uint64(bits.TrailingZeros64(vDelta))
-
-		// Clamp number of leading zeros to avoid overflow when encoding
-		leading &= 0x1F
-		if leading >= 32 {
-			leading = 31
-		}
-
-		// TODO(dgryski): check if it's 'cheaper' to reset the leading/trailing bits instead
-		if s.leading != ^uint64(0) && leading >= s.leading && trailing >= s.trailing {
-			s.bw.WriteBit(bitstream.Zero)
-			s.bw.WriteBits(vDelta>>s.trailing, 64-int(s.leading)-int(s.trailing))
-		} else {
-			s.leading, s.trailing = leading, trailing
-
-			s.bw.WriteBit(bitstream.One)
-			s.bw.WriteBits(leading, 5)
-
-			// Note that if leading == trailing == 0, then sigbits == 64.  But that
-			// value doesn't actually fit into the 6 bits we have.
-			// Luckily, we never need to encode 0 significant bits, since that would
-			// put us in the other case (vdelta == 0).  So instead we write out a 0 and
-			// adjust it back to 64 on unpacking.
-			sigbits := 64 - leading - trailing
-			s.bw.WriteBits(sigbits, 6)
-			s.bw.WriteBits(vDelta>>trailing, int(sigbits))
-		}
-	}
-
-	s.val = v
+	s.buf = append(s.buf, v)
 }
 
 // FloatDecoder decodes a byte slice into multiple float64 values.
 type FloatDecoder struct {
-	val uint64
-
-	leading  uint64
-	trailing uint64
-
-	br BitReader
-	b  []byte
-
-	first    bool
-	finished bool
-
+	buf []float64
+	cur uint
 	err error
 }
 
 // SetBytes initializes the decoder with b. Must call before calling Next().
 func (it *FloatDecoder) SetBytes(b []byte) error {
-	var v uint64
-	if len(b) == 0 {
-		v = uvnan
+	it.cur = 0
+	if b[0] == floatCompressedNone {
+		it.buf = make([]float64, (len(b)-1)/8)
+		C.memcpy(
+			unsafe.Pointer(&it.buf[0]),
+			unsafe.Pointer(&b[1]),
+			C.size_t(len(b)-1))
+	} else if b[0] == floatCompressedSZ {
+		blen := uint(b[2])
+		blen = (blen << 8) + uint(b[1])
+		it.buf = make([]float64, blen)
+		msg := C.decompress(
+			(unsafe.Pointer(&b[3])),
+			C.size_t(len(b)-3),
+			C.size_t(blen))
+		defer C.free(unsafe.Pointer(msg))
+		C.memcpy(unsafe.Pointer(&it.buf[0]),
+			unsafe.Pointer(&msg.data[0]),
+			C.size_t(blen<<3))
 	} else {
-		// first byte is the compression type.
-		// we currently just have gorilla compression.
-		it.br.Reset(b[1:])
-
-		var err error
-		v, err = it.br.ReadBits(64)
-		if err != nil {
-			return err
-		}
+		it.err = errors.New("Unknown compression type")
+		return it.err
 	}
-
-	// Reset all fields.
-	it.val = v
-	it.leading = 0
-	it.trailing = 0
-	it.b = b
-	it.first = true
-	it.finished = false
-	it.err = nil
-
 	return nil
 }
 
 // Next returns true if there are remaining values to read.
 func (it *FloatDecoder) Next() bool {
-	if it.err != nil || it.finished {
-		return false
-	}
-
-	if it.first {
-		it.first = false
-
-		// mark as finished if there were no values.
-		if it.val == uvnan { // IsNaN
-			it.finished = true
-			return false
-		}
-
-		return true
-	}
-
-	// read compressed value
-	var bit bool
-	if it.br.CanReadBitFast() {
-		bit = it.br.ReadBitFast()
-	} else if v, err := it.br.ReadBit(); err != nil {
-		it.err = err
-		return false
-	} else {
-		bit = v
-	}
-
-	if !bit {
-		// it.val = it.val
-	} else {
-		var bit bool
-		if it.br.CanReadBitFast() {
-			bit = it.br.ReadBitFast()
-		} else if v, err := it.br.ReadBit(); err != nil {
-			it.err = err
-			return false
-		} else {
-			bit = v
-		}
-
-		if !bit {
-			// reuse leading/trailing zero bits
-			// it.leading, it.trailing = it.leading, it.trailing
-		} else {
-			bits, err := it.br.ReadBits(5)
-			if err != nil {
-				it.err = err
-				return false
-			}
-			it.leading = bits
-
-			bits, err = it.br.ReadBits(6)
-			if err != nil {
-				it.err = err
-				return false
-			}
-			mbits := bits
-			// 0 significant bits here means we overflowed and we actually need 64; see comment in encoder
-			if mbits == 0 {
-				mbits = 64
-			}
-			it.trailing = 64 - it.leading - mbits
-		}
-
-		mbits := uint(64 - it.leading - it.trailing)
-		bits, err := it.br.ReadBits(mbits)
-		if err != nil {
-			it.err = err
-			return false
-		}
-
-		vbits := it.val
-		vbits ^= (bits << it.trailing)
-
-		if vbits == uvnan { // IsNaN
-			it.finished = true
-			return false
-		}
-		it.val = vbits
-	}
-
-	return true
+	return it.cur < uint(len(it.buf))
 }
 
 // Values returns the current float64 value.
 func (it *FloatDecoder) Values() float64 {
-	return math.Float64frombits(it.val)
+	it.cur += 1
+	return it.buf[it.cur-1]
 }
 
 // Error returns the current decoding error.

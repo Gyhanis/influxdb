@@ -1,6 +1,16 @@
 // Package tsm1 provides a TSDB in the Time Structured Merge tree format.
 package tsm1 // import "github.com/influxdata/influxdb/v2/tsdb/engine/tsm1"
 
+// #include <stdlib.h>
+// #include <sys/types.h>
+// #include <sys/ipc.h>
+// #include <sys/msg.h>
+// int enmqin;
+// int enmqout;
+// int demqin;
+// int demqout;
+import "C"
+
 import (
 	"archive/tar"
 	"bytes"
@@ -18,6 +28,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/influxdata/influxdb/v2/influxql/query"
 	"github.com/influxdata/influxdb/v2/logger"
@@ -51,6 +62,15 @@ import (
 //go:generate tmpl -data=@reader.gen.go.tmpldata reader.gen.go.tmpl
 
 func init() {
+	SZ_path := C.CString("/home/sy/programs/SZ")
+	C.enmqin = C.msgget(C.ftok(SZ_path, 1), 0)
+	C.enmqout = C.msgget(C.ftok(SZ_path, 2), 0)
+	C.demqin = C.msgget(C.ftok(SZ_path, 3), 0)
+	C.demqout = C.msgget(C.ftok(SZ_path, 4), 0)
+	fmt.Printf("enmqin: %v\tenmqout: %v\n", C.enmqin, C.enmqout)
+	fmt.Printf("demqin: %v\tdemqout: %v\n", C.demqin, C.demqout)
+	C.free(unsafe.Pointer(SZ_path))
+
 	tsdb.RegisterEngine("tsm1", NewEngine)
 }
 
