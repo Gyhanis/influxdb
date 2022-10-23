@@ -1,5 +1,11 @@
 package tsm1
 
+// #cgo CFLAGS: -I/home/sy/programs/machete/include
+// #cgo LDFLAGS: -L/home/sy/programs/machete/lib -lmachete -lstdc++
+// #include "Machete_C.h"
+// #include <string.h>
+import "C"
+
 /*
 This code is originally from: https://github.com/dgryski/go-tsz and has been modified to remove
 the timestamp compression functionality.
@@ -10,268 +16,120 @@ this version.
 */
 
 import (
-	"bytes"
 	"fmt"
-	"math"
-	"math/bits"
+	"unsafe"
 
-	"github.com/dgryski/go-bitstream"
+	"github.com/influxdata/influxdb/v2/tsdb"
 )
+
+var error_bound float64
 
 // Note: an uncompressed format is not yet implemented.
 // floatCompressedGorilla is a compressed format using the gorilla paper encoding
 const floatCompressedGorilla = 1
+const floatCompressedMachete = 2
 
 // uvnan is the constant returned from math.NaN().
 const uvnan = 0x7FF8000000000001
 
 // FloatEncoder encodes multiple float64s into a byte slice.
 type FloatEncoder struct {
-	val float64
-	err error
-
-	leading  uint64
-	trailing uint64
-
-	buf bytes.Buffer
-	bw  *bitstream.BitWriter
-
-	first    bool
-	finished bool
+	values []float64
+	err    error
+	result []uint32
 }
 
 // NewFloatEncoder returns a new FloatEncoder.
 func NewFloatEncoder() *FloatEncoder {
 	s := FloatEncoder{
-		first:   true,
-		leading: ^uint64(0),
+		values: make([]float64, 0, tsdb.DefaultMaxPointsPerBlock),
+		err:    nil,
+		result: make([]uint32, tsdb.DefaultMaxPointsPerBlock*2),
 	}
-
-	s.bw = bitstream.NewWriter(&s.buf)
-	s.buf.WriteByte(floatCompressedGorilla << 4)
 
 	return &s
 }
 
 // Reset sets the encoder back to its initial state.
 func (s *FloatEncoder) Reset() {
-	s.val = 0
-	s.err = nil
-	s.leading = ^uint64(0)
-	s.trailing = 0
-	s.buf.Reset()
-	s.buf.WriteByte(floatCompressedGorilla << 4)
-
-	s.bw.Resume(0x0, 8)
-
-	s.finished = false
-	s.first = true
+	s.values = s.values[:0]
 }
 
 // Bytes returns a copy of the underlying byte buffer used in the encoder.
+// func (s *FloatEncoder) Bytes() ([]byte, error) {
+// 	var result []byte
+// 	header := (*reflect.SliceHeader)(unsafe.Pointer(&result))
+// 	header.Len = len(s.result) * 4
+// 	header.Cap = cap(s.result) * 4
+// 	header.Data = uintptr(unsafe.Pointer(&s.result[0]))
+// 	return result, s.err
+// }
 func (s *FloatEncoder) Bytes() ([]byte, error) {
-	return s.buf.Bytes(), s.err
+	if s.err != nil {
+		return nil, s.err
+	} else {
+		result := make([]byte, len(s.result)*4)
+		C.memcpy(unsafe.Pointer(&result[0]), unsafe.Pointer(&s.result[0]), C.size_t(len(result)))
+		return result, nil
+	}
 }
 
 // Flush indicates there are no more values to encode.
 func (s *FloatEncoder) Flush() {
-	if !s.finished {
-		// write an end-of-stream record
-		s.finished = true
-		s.Write(math.NaN())
-		s.bw.Flush(bitstream.Zero)
+	din := (*C.double)(unsafe.Pointer(&s.values[0]))
+	din_len := C.int32_t(len(s.values))
+	encoder := C.MachetePrepare(din, din_len, C.double(error_bound))
+	out_len := C.MacheteGetSize(encoder)
+	// fmt.Printf("Calling Machete on %v %v -> %v\n", din, din_len, out_len)
+	if cap(s.result) < int(out_len)+1 {
+		s.result = make([]uint32, int(out_len)+1)
+	} else {
+		s.result = s.result[:int(out_len)+1]
 	}
+	s.result[0] = floatCompressedMachete | (uint32(len(s.values)) << 8)
+	C.MacheteEncode(encoder, (*C.uint32_t)(&s.result[1]))
 }
 
 // Write encodes v to the underlying buffer.
 func (s *FloatEncoder) Write(v float64) {
-	// Only allow NaN as a sentinel value
-	if math.IsNaN(v) && !s.finished {
-		s.err = fmt.Errorf("unsupported value: NaN")
-		return
-	}
-	if s.first {
-		// first point
-		s.val = v
-		s.first = false
-		s.bw.WriteBits(math.Float64bits(v), 64)
-		return
-	}
-
-	vDelta := math.Float64bits(v) ^ math.Float64bits(s.val)
-
-	if vDelta == 0 {
-		s.bw.WriteBit(bitstream.Zero)
-	} else {
-		s.bw.WriteBit(bitstream.One)
-
-		leading := uint64(bits.LeadingZeros64(vDelta))
-		trailing := uint64(bits.TrailingZeros64(vDelta))
-
-		// Clamp number of leading zeros to avoid overflow when encoding
-		leading &= 0x1F
-		if leading >= 32 {
-			leading = 31
-		}
-
-		// TODO(dgryski): check if it's 'cheaper' to reset the leading/trailing bits instead
-		if s.leading != ^uint64(0) && leading >= s.leading && trailing >= s.trailing {
-			s.bw.WriteBit(bitstream.Zero)
-			s.bw.WriteBits(vDelta>>s.trailing, 64-int(s.leading)-int(s.trailing))
-		} else {
-			s.leading, s.trailing = leading, trailing
-
-			s.bw.WriteBit(bitstream.One)
-			s.bw.WriteBits(leading, 5)
-
-			// Note that if leading == trailing == 0, then sigbits == 64.  But that
-			// value doesn't actually fit into the 6 bits we have.
-			// Luckily, we never need to encode 0 significant bits, since that would
-			// put us in the other case (vdelta == 0).  So instead we write out a 0 and
-			// adjust it back to 64 on unpacking.
-			sigbits := 64 - leading - trailing
-			s.bw.WriteBits(sigbits, 6)
-			s.bw.WriteBits(vDelta>>trailing, int(sigbits))
-		}
-	}
-
-	s.val = v
+	s.values = append(s.values, v)
 }
 
 // FloatDecoder decodes a byte slice into multiple float64 values.
 type FloatDecoder struct {
-	val uint64
-
-	leading  uint64
-	trailing uint64
-
-	br BitReader
-	b  []byte
-
-	first    bool
-	finished bool
-
-	err error
+	values []float64
+	cur    int
+	err    error
 }
 
 // SetBytes initializes the decoder with b. Must call before calling Next().
 func (it *FloatDecoder) SetBytes(b []byte) error {
-	var v uint64
-	if len(b) == 0 {
-		v = uvnan
-	} else {
-		// first byte is the compression type.
-		// we currently just have gorilla compression.
-		it.br.Reset(b[1:])
-
-		var err error
-		v, err = it.br.ReadBits(64)
-		if err != nil {
-			return err
-		}
+	if b[0] != floatCompressedMachete {
+		it.err = fmt.Errorf("Error in compression type")
+		return it.err
 	}
-
-	// Reset all fields.
-	it.val = v
-	it.leading = 0
-	it.trailing = 0
-	it.b = b
-	it.first = true
-	it.finished = false
-	it.err = nil
-
+	vlen := int(b[1]) | (int(b[2]) << 8) | (int(b[3]) << 16)
+	if cap(it.values) < vlen {
+		it.values = make([]float64, vlen)
+	} else {
+		it.values = it.values[:vlen]
+	}
+	C.MacheteDecode((*C.uint32_t)(unsafe.Pointer(&b[4])), C.uint32_t(len(b)-4),
+		(*C.double)(unsafe.Pointer(&it.values[0])), C.uint32_t(vlen))
+	it.cur = 0
 	return nil
 }
 
 // Next returns true if there are remaining values to read.
 func (it *FloatDecoder) Next() bool {
-	if it.err != nil || it.finished {
-		return false
-	}
-
-	if it.first {
-		it.first = false
-
-		// mark as finished if there were no values.
-		if it.val == uvnan { // IsNaN
-			it.finished = true
-			return false
-		}
-
-		return true
-	}
-
-	// read compressed value
-	var bit bool
-	if it.br.CanReadBitFast() {
-		bit = it.br.ReadBitFast()
-	} else if v, err := it.br.ReadBit(); err != nil {
-		it.err = err
-		return false
-	} else {
-		bit = v
-	}
-
-	if !bit {
-		// it.val = it.val
-	} else {
-		var bit bool
-		if it.br.CanReadBitFast() {
-			bit = it.br.ReadBitFast()
-		} else if v, err := it.br.ReadBit(); err != nil {
-			it.err = err
-			return false
-		} else {
-			bit = v
-		}
-
-		if !bit {
-			// reuse leading/trailing zero bits
-			// it.leading, it.trailing = it.leading, it.trailing
-		} else {
-			bits, err := it.br.ReadBits(5)
-			if err != nil {
-				it.err = err
-				return false
-			}
-			it.leading = bits
-
-			bits, err = it.br.ReadBits(6)
-			if err != nil {
-				it.err = err
-				return false
-			}
-			mbits := bits
-			// 0 significant bits here means we overflowed and we actually need 64; see comment in encoder
-			if mbits == 0 {
-				mbits = 64
-			}
-			it.trailing = 64 - it.leading - mbits
-		}
-
-		mbits := uint(64 - it.leading - it.trailing)
-		bits, err := it.br.ReadBits(mbits)
-		if err != nil {
-			it.err = err
-			return false
-		}
-
-		vbits := it.val
-		vbits ^= (bits << it.trailing)
-
-		if vbits == uvnan { // IsNaN
-			it.finished = true
-			return false
-		}
-		it.val = vbits
-	}
-
-	return true
+	return it.err == nil && it.cur < len(it.values)
 }
 
 // Values returns the current float64 value.
 func (it *FloatDecoder) Values() float64 {
-	return math.Float64frombits(it.val)
+	v := it.values[it.cur]
+	it.cur += 1
+	return v
 }
 
 // Error returns the current decoding error.
