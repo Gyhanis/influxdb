@@ -71,6 +71,17 @@ func init() {
 	fmt.Printf("demqin: %v\tdemqout: %v\n", C.demqin, C.demqout)
 	C.free(unsafe.Pointer(SZ_path))
 
+	file, err := os.Open("influxdb.cfg")
+	if err != nil {
+		fmt.Printf("Failed to open config file: %v\n", err.Error())
+		os.Exit(1)
+	}
+	var tc int
+	fmt.Fscanf(file, "Thread count: %v\n", &tc)
+	runtime.GOMAXPROCS(tc)
+	fmt.Fscanf(file, "Error bound: %v\n", &error_bound)
+	fmt.Printf("Thread count: %v\t Error bound:%v\n", runtime.GOMAXPROCS(0), error_bound)
+
 	tsdb.RegisterEngine("tsm1", NewEngine)
 }
 
