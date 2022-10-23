@@ -51,6 +51,17 @@ import (
 //go:generate tmpl -data=@reader.gen.go.tmpldata reader.gen.go.tmpl
 
 func init() {
+	file, err := os.Open("influxdb.cfg")
+	if err != nil {
+		fmt.Printf("Failed to open config file: %v\n", err.Error())
+		os.Exit(1)
+	}
+	var tc int
+	fmt.Fscanf(file, "Thread count: %v\n", &tc)
+	runtime.GOMAXPROCS(tc)
+	fmt.Fscanf(file, "Error bound: %v\n", &error_bound)
+	fmt.Printf("Thread count: %v\t Error bound:%v\n", runtime.GOMAXPROCS(0), error_bound)
+
 	tsdb.RegisterEngine("tsm1", NewEngine)
 }
 

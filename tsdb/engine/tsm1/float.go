@@ -25,6 +25,8 @@ const floatCompressedGorilla = 1
 // uvnan is the constant returned from math.NaN().
 const uvnan = 0x7FF8000000000001
 
+var error_bound float64
+
 // FloatEncoder encodes multiple float64s into a byte slice.
 type FloatEncoder struct {
 	val float64
