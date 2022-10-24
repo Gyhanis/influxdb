@@ -41,7 +41,12 @@ import (
 // supported, so this method implements a batch oriented version of that.
 func FloatArrayEncodeAll(src []float64, b []byte) ([]byte, error) {
 	if len(src) <= 20 {
-		b = make([]byte, len(src)*8+1)
+		length := len(src)*8 + 1
+		if cap(b) < length {
+			b = make([]byte, length)
+		} else {
+			b = b[:length]
+		}
 		b[0] = floatCompressedNone
 		C.memcpy(
 			unsafe.Pointer(&b[1]),
@@ -50,8 +55,11 @@ func FloatArrayEncodeAll(src []float64, b []byte) ([]byte, error) {
 	} else {
 		msg := C.compress(unsafe.Pointer(&src[0]), C.size_t(len(src)), C.double(error_bound))
 		defer C.free(unsafe.Pointer(msg))
-
-		b = make([]byte, int(msg.size)+3)
+		if cap(b) < int(msg.size)+3 {
+			b = make([]byte, int(msg.size)+3)
+		} else {
+			b = b[:int(msg.size)+3]
+		}
 		b[0] = floatCompressedSZ
 		b[1] = byte(len(src) & 0xff)
 		b[2] = byte(len(src) >> 8)
@@ -65,7 +73,12 @@ func FloatArrayEncodeAll(src []float64, b []byte) ([]byte, error) {
 
 func FloatArrayDecodeAll(b []byte, buf []float64) ([]float64, error) {
 	if b[0] == floatCompressedNone {
-		buf = make([]float64, (len(b)-1)/8)
+		length := (len(b) - 1) / 8
+		if cap(buf) < length {
+			buf = make([]float64, (len(b)-1)/8)
+		} else {
+			buf = buf[:length]
+		}
 		C.memcpy(
 			unsafe.Pointer(&buf[0]),
 			unsafe.Pointer(&b[1]),
@@ -73,7 +86,11 @@ func FloatArrayDecodeAll(b []byte, buf []float64) ([]float64, error) {
 	} else if b[0] == floatCompressedSZ {
 		blen := uint(b[2])
 		blen = (blen << 8) + uint(b[1])
-		buf = make([]float64, blen)
+		if cap(buf) < int(blen) {
+			buf = make([]float64, blen)
+		} else {
+			buf = buf[:blen]
+		}
 		msg := C.decompress(
 			(unsafe.Pointer(&b[3])),
 			C.size_t(len(b)-3),
@@ -83,7 +100,7 @@ func FloatArrayDecodeAll(b []byte, buf []float64) ([]float64, error) {
 			unsafe.Pointer(&msg.data[0]),
 			C.size_t(blen<<3))
 	} else {
-		err := errors.New("Unknown compression type")
+		err := errors.New("unknown compression type")
 		return nil, err
 	}
 	return buf, nil

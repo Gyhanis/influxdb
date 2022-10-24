@@ -171,7 +171,12 @@ type FloatDecoder struct {
 func (it *FloatDecoder) SetBytes(b []byte) error {
 	it.cur = 0
 	if b[0] == floatCompressedNone {
-		it.buf = make([]float64, (len(b)-1)/8)
+		length := (len(b) - 1) / 8
+		if cap(it.buf) < length {
+			it.buf = make([]float64, (len(b)-1)/8)
+		} else {
+			it.buf = it.buf[:length]
+		}
 		C.memcpy(
 			unsafe.Pointer(&it.buf[0]),
 			unsafe.Pointer(&b[1]),
@@ -179,7 +184,11 @@ func (it *FloatDecoder) SetBytes(b []byte) error {
 	} else if b[0] == floatCompressedSZ {
 		blen := uint(b[2])
 		blen = (blen << 8) + uint(b[1])
-		it.buf = make([]float64, blen)
+		if cap(it.buf) < int(blen) {
+			it.buf = make([]float64, blen)
+		} else {
+			it.buf = it.buf[:blen]
+		}
 		msg := C.decompress(
 			(unsafe.Pointer(&b[3])),
 			C.size_t(len(b)-3),
@@ -189,7 +198,7 @@ func (it *FloatDecoder) SetBytes(b []byte) error {
 			unsafe.Pointer(&msg.data[0]),
 			C.size_t(blen<<3))
 	} else {
-		it.err = errors.New("Unknown compression type")
+		it.err = errors.New("unknown compression type")
 		return it.err
 	}
 	return nil
