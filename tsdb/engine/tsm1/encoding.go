@@ -10,6 +10,7 @@ import (
 	"github.com/influxdata/influxdb/v2/pkg/pool"
 	"github.com/influxdata/influxdb/v2/tsdb"
 	"github.com/influxdata/influxql"
+	"github.com/spf13/viper"
 )
 
 const (
@@ -43,6 +44,19 @@ func block_len_recorder() {
 }
 
 func init() {
+	viper.SetConfigType("yaml")
+	viper.SetConfigName("influxdb-cfg")
+	viper.AddConfigPath(".")
+	err := viper.ReadInConfig()
+	if err != nil {
+		fmt.Println("Error reading config")
+		panic(err)
+	}
+
+	tc := viper.GetInt("ThreadCount")
+	runtime.GOMAXPROCS(tc)
+	fmt.Printf("Thread count: %v\n", runtime.GOMAXPROCS(0))
+
 	// Prime the pools with one encoder/decoder for each available CPU.
 	vals := make([]interface{}, 0, runtime.NumCPU())
 	for _, p := range []*pool.Generic{
