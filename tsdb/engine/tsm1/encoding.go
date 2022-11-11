@@ -36,6 +36,7 @@ const (
 
 var block_len chan int
 var BLFile *os.File
+var TimingFile string
 
 func block_len_recorder() {
 	for {
@@ -78,7 +79,8 @@ func init() {
 		}
 	}
 
-	BLFile, _ = os.Create("filename")
+	BLFile, _ = os.Create(viper.GetString("BLFile"))
+	TimingFile = viper.GetString("TimingFile")
 	block_len = make(chan int, runtime.NumCPU())
 	go block_len_recorder()
 }

@@ -195,8 +195,10 @@ func (m *Launcher) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("failed to shut down server: [%s]", strings.Join(errs, ","))
 	}
 
-	fmt.Printf("IO time:%v\n", float64(tsm1.TimeIO)/1000/1000)
-	fmt.Printf("Decode time: %v\n", float64(tsm1.TimeDecode)/1000/1000)
+	timing, _ := os.Create(tsm1.TimingFile)
+	fmt.Fprintf(timing, "IO time: %v\n", float64(tsm1.TimeIO)/1000/1000)
+	fmt.Fprintf(timing, "Decode time: %v\n", float64(tsm1.TimeDecode)/1000/1000)
+	timing.Close()
 	tsm1.BLFile.Close()
 	return nil
 }
