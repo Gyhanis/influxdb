@@ -1,10 +1,21 @@
 package tsm1
 
+// #include <stdlib.h>
+// #include <sys/types.h>
+// #include <sys/ipc.h>
+// #include <sys/msg.h>
+// int enmqin;
+// int enmqout;
+// int demqin;
+// int demqout;
+import "C"
+
 import (
 	"encoding/binary"
 	"fmt"
 	"runtime"
 	"time"
+	"unsafe"
 
 	"github.com/influxdata/influxdb/v2/pkg/pool"
 	"github.com/influxdata/influxdb/v2/tsdb"
@@ -46,6 +57,15 @@ func init() {
 	tc := viper.GetInt("ThreadCount")
 	runtime.GOMAXPROCS(tc)
 	fmt.Printf("Thread count: %v\n", runtime.GOMAXPROCS(0))
+
+	SZ_path := C.CString("/home/sy/programs/SZ")
+	C.enmqin = C.msgget(C.ftok(SZ_path, 1), 0)
+	C.enmqout = C.msgget(C.ftok(SZ_path, 2), 0)
+	C.demqin = C.msgget(C.ftok(SZ_path, 3), 0)
+	C.demqout = C.msgget(C.ftok(SZ_path, 4), 0)
+	fmt.Printf("enmqin: %v\tenmqout: %v\n", C.enmqin, C.enmqout)
+	fmt.Printf("demqin: %v\tdemqout: %v\n", C.demqin, C.demqout)
+	C.free(unsafe.Pointer(SZ_path))
 
 	// Prime the pools with one encoder/decoder for each available CPU.
 	vals := make([]interface{}, 0, runtime.NumCPU())
