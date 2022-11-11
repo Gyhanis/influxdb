@@ -3,6 +3,7 @@ package tsm1
 import (
 	"encoding/binary"
 	"fmt"
+	"os"
 	"runtime"
 	"time"
 
@@ -32,6 +33,15 @@ const (
 	encodedBlockHeaderSize = 1
 )
 
+var block_len chan int
+var BLFile *os.File
+
+func block_len_recorder() {
+	for {
+		fmt.Fprintf(BLFile, "%v\n", <-block_len)
+	}
+}
+
 func init() {
 	// Prime the pools with one encoder/decoder for each available CPU.
 	vals := make([]interface{}, 0, runtime.NumCPU())
@@ -53,6 +63,10 @@ func init() {
 			p.Put(v)
 		}
 	}
+
+	BLFile, _ = os.Create("filename")
+	block_len = make(chan int, runtime.NumCPU())
+	go block_len_recorder()
 }
 
 var (
@@ -389,6 +403,10 @@ func encodeFloatBlockUsing(buf []byte, values []Value, tsenc TimeEncoder, venc *
 	vb, err := venc.Bytes()
 	if err != nil {
 		return nil, err
+	}
+
+	if len(values) == 1000 {
+
 	}
 
 	// Prepend the first timestamp of the block in the first 8 bytes and the block
