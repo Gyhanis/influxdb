@@ -46,6 +46,8 @@ func init() {
 	tc := viper.GetInt("ThreadCount")
 	runtime.GOMAXPROCS(tc)
 	fmt.Printf("Thread count: %v\n", runtime.GOMAXPROCS(0))
+	error_bound = viper.GetFloat64("ErrorBound")
+	fmt.Printf("Error bound: %v\n", error_bound)
 
 	// Prime the pools with one encoder/decoder for each available CPU.
 	vals := make([]interface{}, 0, runtime.NumCPU())
