@@ -57,6 +57,8 @@ func init() {
 	tc := viper.GetInt("ThreadCount")
 	runtime.GOMAXPROCS(tc)
 	fmt.Printf("Thread count: %v\n", runtime.GOMAXPROCS(0))
+	error_bound = viper.GetFloat64("ErrorBound")
+	fmt.Printf("Error bound: %v\n", error_bound)
 
 	SZ_path := C.CString("/home/sy/programs/SZ")
 	C.enmqin = C.msgget(C.ftok(SZ_path, 1), 0)
