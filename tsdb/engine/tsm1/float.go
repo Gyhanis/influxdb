@@ -22,8 +22,6 @@ import (
 	"github.com/influxdata/influxdb/v2/tsdb"
 )
 
-var error_bound float64
-
 // Note: an uncompressed format is not yet implemented.
 // floatCompressedGorilla is a compressed format using the gorilla paper encoding
 const floatCompressedGorilla = 1
@@ -31,6 +29,8 @@ const floatCompressedMachete = 2
 
 // uvnan is the constant returned from math.NaN().
 const uvnan = 0x7FF8000000000001
+
+var error_bound float64
 
 // FloatEncoder encodes multiple float64s into a byte slice.
 type FloatEncoder struct {
@@ -87,7 +87,8 @@ func (s *FloatEncoder) Flush() {
 		s.result = s.result[:int(out_len)+1]
 	}
 	s.result[0] = floatCompressedMachete | (uint32(len(s.values)) << 8)
-	C.MacheteEncode(encoder, (*C.uint32_t)(&s.result[1]))
+	out_len = C.MacheteEncode(encoder, (*C.uint32_t)(&s.result[1]))
+	s.result = s.result[:int(out_len)+1]
 }
 
 // Write encodes v to the underlying buffer.

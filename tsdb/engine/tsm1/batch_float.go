@@ -30,8 +30,9 @@ func FloatArrayEncodeAll(src []float64, b []byte) ([]byte, error) {
 	b[1] = byte(len(src))
 	b[2] = byte(len(src) >> 8)
 	b[3] = byte(len(src) >> 16)
-	C.MacheteEncode(encoder, (*C.uint32_t)(unsafe.Pointer(&b[4])))
-	return b, nil
+	out_len = C.MacheteEncode(encoder, (*C.uint32_t)(unsafe.Pointer(&b[4])))
+	out_len2 = int(out_len)*4 + 4
+	return b[:out_len2], nil
 }
 
 func FloatArrayDecodeAll(b []byte, buf []float64) ([]float64, error) {
