@@ -422,7 +422,7 @@ func encodeFloatBlockUsing(buf []byte, values []Value, tsenc TimeEncoder, venc *
 	}
 
 	if len(values) == 1000 {
-
+		block_len <- len(b)
 	}
 
 	// Prepend the first timestamp of the block in the first 8 bytes and the block
