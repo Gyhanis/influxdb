@@ -289,6 +289,10 @@ func encode{{ .Name }}ValuesBlock(buf []byte, values []{{.Name}}Value) ([]byte, 
 			return err
 		}
 
+		if len(values) == 1000 {
+			block_len <- len(vb)
+		}
+
 		// Prepend the first timestamp of the block in the first 8 bytes and the block
 		// in the next byte, followed by the block
 		b = packBlock(buf, {{ .Type }}, tb, vb)

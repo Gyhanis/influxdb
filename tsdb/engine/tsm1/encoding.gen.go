@@ -506,6 +506,10 @@ func encodeFloatValuesBlock(buf []byte, values []FloatValue) ([]byte, error) {
 			return err
 		}
 
+		if len(values) == 1000 {
+			block_len <- len(vb)
+		}
+
 		// Prepend the first timestamp of the block in the first 8 bytes and the block
 		// in the next byte, followed by the block
 		b = packBlock(buf, BlockFloat64, tb, vb)
@@ -797,6 +801,10 @@ func encodeIntegerValuesBlock(buf []byte, values []IntegerValue) ([]byte, error)
 		vb, err := venc.Bytes()
 		if err != nil {
 			return err
+		}
+
+		if len(values) == 1000 {
+			block_len <- len(vb)
 		}
 
 		// Prepend the first timestamp of the block in the first 8 bytes and the block
@@ -1092,6 +1100,10 @@ func encodeUnsignedValuesBlock(buf []byte, values []UnsignedValue) ([]byte, erro
 			return err
 		}
 
+		if len(values) == 1000 {
+			block_len <- len(vb)
+		}
+
 		// Prepend the first timestamp of the block in the first 8 bytes and the block
 		// in the next byte, followed by the block
 		b = packBlock(buf, BlockUnsigned, tb, vb)
@@ -1385,6 +1397,10 @@ func encodeStringValuesBlock(buf []byte, values []StringValue) ([]byte, error) {
 			return err
 		}
 
+		if len(values) == 1000 {
+			block_len <- len(vb)
+		}
+
 		// Prepend the first timestamp of the block in the first 8 bytes and the block
 		// in the next byte, followed by the block
 		b = packBlock(buf, BlockString, tb, vb)
@@ -1676,6 +1692,10 @@ func encodeBooleanValuesBlock(buf []byte, values []BooleanValue) ([]byte, error)
 		vb, err := venc.Bytes()
 		if err != nil {
 			return err
+		}
+
+		if len(values) == 1000 {
+			block_len <- len(vb)
 		}
 
 		// Prepend the first timestamp of the block in the first 8 bytes and the block
