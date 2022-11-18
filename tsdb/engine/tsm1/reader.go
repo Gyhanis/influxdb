@@ -11,11 +11,15 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/influxdata/influxdb/v2/pkg/bytesutil"
 	"github.com/influxdata/influxdb/v2/pkg/file"
 	"github.com/influxdata/influxdb/v2/tsdb"
 )
+
+var TimeIO int64
+var TimeDecode int64
 
 // ErrFileInUse is returned when attempting to remove or close a TSM file that is still being used.
 var ErrFileInUse = fmt.Errorf("file still in use")
@@ -1462,7 +1466,16 @@ func (m *mmapAccessor) readBlock(entry *IndexEntry, values []Value) ([]Value, er
 	}
 	//TODO: Validate checksum
 	var err error
-	values, err = DecodeBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
+	tmp := make([]byte, entry.Size)
+	start := time.Now()
+	copy(tmp, m.b[entry.Offset:])
+	durIO := time.Since(start).Microseconds()
+	atomic.AddInt64(&TimeIO, durIO)
+
+	start = time.Now()
+	values, err = DecodeBlock(tmp[4:], values)
+	durDecode := int64(time.Since(start).Microseconds())
+	atomic.AddInt64(&TimeDecode, durDecode)
 	if err != nil {
 		return nil, err
 	}
@@ -1519,7 +1532,16 @@ func (m *mmapAccessor) readAll(key []byte) ([]Value, error) {
 		//TODO: Validate checksum
 		temp = temp[:0]
 		// The +4 is the 4 byte checksum length
-		temp, err = DecodeBlock(m.b[block.Offset+4:block.Offset+int64(block.Size)], temp)
+		tmp := make([]byte, block.Size)
+		start := time.Now()
+		copy(tmp, m.b[block.Offset:])
+		durIO := time.Since(start).Microseconds()
+		atomic.AddInt64(&TimeIO, durIO)
+
+		start = time.Now()
+		temp, err = DecodeBlock(tmp[4:], temp)
+		durDecode := time.Since(start).Microseconds()
+		atomic.AddInt64(&TimeDecode, durDecode)
 		if err != nil {
 			return nil, err
 		}

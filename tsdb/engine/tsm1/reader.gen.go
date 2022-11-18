@@ -7,6 +7,9 @@
 package tsm1
 
 import (
+	"sync/atomic"
+	"time"
+
 	"github.com/influxdata/influxdb/v2/tsdb"
 )
 
@@ -123,8 +126,17 @@ func (m *mmapAccessor) readFloatBlock(entry *IndexEntry, values *[]FloatValue) (
 		return nil, ErrTSMClosed
 	}
 
-	a, err := DecodeFloatBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
+	tmp := make([]byte, entry.Size)
+	start := time.Now()
+	copy(tmp, m.b[entry.Offset:])
+	durIO := time.Since(start).Microseconds()
+
+	start = time.Now()
+	a, err := DecodeFloatBlock(tmp[4:], values)
+	durDecode := int64(time.Since(start).Microseconds())
 	m.mu.RUnlock()
+	atomic.AddInt64(&TimeIO, durIO)
+	atomic.AddInt64(&TimeDecode, durDecode)
 
 	if err != nil {
 		return nil, err
@@ -142,8 +154,17 @@ func (m *mmapAccessor) readFloatArrayBlock(entry *IndexEntry, values *tsdb.Float
 		return ErrTSMClosed
 	}
 
-	err := DecodeFloatArrayBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
+	tmp := make([]byte, entry.Size)
+	start := time.Now()
+	copy(tmp, m.b[entry.Offset:])
+	durIO := time.Since(start).Microseconds()
+
+	start = time.Now()
+	err := DecodeFloatArrayBlock(tmp[4:], values)
+	durDecode := int64(time.Since(start).Microseconds())
 	m.mu.RUnlock()
+	atomic.AddInt64(&TimeIO, durIO)
+	atomic.AddInt64(&TimeDecode, durDecode)
 
 	return err
 }
@@ -157,8 +178,17 @@ func (m *mmapAccessor) readIntegerBlock(entry *IndexEntry, values *[]IntegerValu
 		return nil, ErrTSMClosed
 	}
 
-	a, err := DecodeIntegerBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
+	tmp := make([]byte, entry.Size)
+	start := time.Now()
+	copy(tmp, m.b[entry.Offset:])
+	durIO := time.Since(start).Microseconds()
+
+	start = time.Now()
+	a, err := DecodeIntegerBlock(tmp[4:], values)
+	durDecode := int64(time.Since(start).Microseconds())
 	m.mu.RUnlock()
+	atomic.AddInt64(&TimeIO, durIO)
+	atomic.AddInt64(&TimeDecode, durDecode)
 
 	if err != nil {
 		return nil, err
@@ -176,8 +206,17 @@ func (m *mmapAccessor) readIntegerArrayBlock(entry *IndexEntry, values *tsdb.Int
 		return ErrTSMClosed
 	}
 
-	err := DecodeIntegerArrayBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
+	tmp := make([]byte, entry.Size)
+	start := time.Now()
+	copy(tmp, m.b[entry.Offset:])
+	durIO := time.Since(start).Microseconds()
+
+	start = time.Now()
+	err := DecodeIntegerArrayBlock(tmp[4:], values)
+	durDecode := int64(time.Since(start).Microseconds())
 	m.mu.RUnlock()
+	atomic.AddInt64(&TimeIO, durIO)
+	atomic.AddInt64(&TimeDecode, durDecode)
 
 	return err
 }
@@ -191,8 +230,17 @@ func (m *mmapAccessor) readUnsignedBlock(entry *IndexEntry, values *[]UnsignedVa
 		return nil, ErrTSMClosed
 	}
 
-	a, err := DecodeUnsignedBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
+	tmp := make([]byte, entry.Size)
+	start := time.Now()
+	copy(tmp, m.b[entry.Offset:])
+	durIO := time.Since(start).Microseconds()
+
+	start = time.Now()
+	a, err := DecodeUnsignedBlock(tmp[4:], values)
+	durDecode := int64(time.Since(start).Microseconds())
 	m.mu.RUnlock()
+	atomic.AddInt64(&TimeIO, durIO)
+	atomic.AddInt64(&TimeDecode, durDecode)
 
 	if err != nil {
 		return nil, err
@@ -210,8 +258,17 @@ func (m *mmapAccessor) readUnsignedArrayBlock(entry *IndexEntry, values *tsdb.Un
 		return ErrTSMClosed
 	}
 
-	err := DecodeUnsignedArrayBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
+	tmp := make([]byte, entry.Size)
+	start := time.Now()
+	copy(tmp, m.b[entry.Offset:])
+	durIO := time.Since(start).Microseconds()
+
+	start = time.Now()
+	err := DecodeUnsignedArrayBlock(tmp[4:], values)
+	durDecode := int64(time.Since(start).Microseconds())
 	m.mu.RUnlock()
+	atomic.AddInt64(&TimeIO, durIO)
+	atomic.AddInt64(&TimeDecode, durDecode)
 
 	return err
 }
@@ -225,8 +282,17 @@ func (m *mmapAccessor) readStringBlock(entry *IndexEntry, values *[]StringValue)
 		return nil, ErrTSMClosed
 	}
 
-	a, err := DecodeStringBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
+	tmp := make([]byte, entry.Size)
+	start := time.Now()
+	copy(tmp, m.b[entry.Offset:])
+	durIO := time.Since(start).Microseconds()
+
+	start = time.Now()
+	a, err := DecodeStringBlock(tmp[4:], values)
+	durDecode := int64(time.Since(start).Microseconds())
 	m.mu.RUnlock()
+	atomic.AddInt64(&TimeIO, durIO)
+	atomic.AddInt64(&TimeDecode, durDecode)
 
 	if err != nil {
 		return nil, err
@@ -244,8 +310,17 @@ func (m *mmapAccessor) readStringArrayBlock(entry *IndexEntry, values *tsdb.Stri
 		return ErrTSMClosed
 	}
 
-	err := DecodeStringArrayBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
+	tmp := make([]byte, entry.Size)
+	start := time.Now()
+	copy(tmp, m.b[entry.Offset:])
+	durIO := time.Since(start).Microseconds()
+
+	start = time.Now()
+	err := DecodeStringArrayBlock(tmp[4:], values)
+	durDecode := int64(time.Since(start).Microseconds())
 	m.mu.RUnlock()
+	atomic.AddInt64(&TimeIO, durIO)
+	atomic.AddInt64(&TimeDecode, durDecode)
 
 	return err
 }
@@ -259,8 +334,17 @@ func (m *mmapAccessor) readBooleanBlock(entry *IndexEntry, values *[]BooleanValu
 		return nil, ErrTSMClosed
 	}
 
-	a, err := DecodeBooleanBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
+	tmp := make([]byte, entry.Size)
+	start := time.Now()
+	copy(tmp, m.b[entry.Offset:])
+	durIO := time.Since(start).Microseconds()
+
+	start = time.Now()
+	a, err := DecodeBooleanBlock(tmp[4:], values)
+	durDecode := int64(time.Since(start).Microseconds())
 	m.mu.RUnlock()
+	atomic.AddInt64(&TimeIO, durIO)
+	atomic.AddInt64(&TimeDecode, durDecode)
 
 	if err != nil {
 		return nil, err
@@ -278,8 +362,17 @@ func (m *mmapAccessor) readBooleanArrayBlock(entry *IndexEntry, values *tsdb.Boo
 		return ErrTSMClosed
 	}
 
-	err := DecodeBooleanArrayBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
+	tmp := make([]byte, entry.Size)
+	start := time.Now()
+	copy(tmp, m.b[entry.Offset:])
+	durIO := time.Since(start).Microseconds()
+
+	start = time.Now()
+	err := DecodeBooleanArrayBlock(tmp[4:], values)
+	durDecode := int64(time.Since(start).Microseconds())
 	m.mu.RUnlock()
+	atomic.AddInt64(&TimeIO, durIO)
+	atomic.AddInt64(&TimeDecode, durDecode)
 
 	return err
 }
