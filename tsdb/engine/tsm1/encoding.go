@@ -13,6 +13,7 @@ import "C"
 import (
 	"encoding/binary"
 	"fmt"
+	"os"
 	"runtime"
 	"time"
 	"unsafe"
@@ -43,6 +44,16 @@ const (
 	// byte encoding the type of the block.
 	encodedBlockHeaderSize = 1
 )
+
+var block_len chan int
+var BLFile *os.File
+var TimingFile string
+
+func block_len_recorder() {
+	for {
+		fmt.Fprintf(BLFile, "%v\n", <-block_len)
+	}
+}
 
 func init() {
 	viper.SetConfigType("yaml")
@@ -89,6 +100,11 @@ func init() {
 			p.Put(v)
 		}
 	}
+
+	BLFile, _ = os.Create(viper.GetString("BLFile"))
+	TimingFile = viper.GetString("TimingFile")
+	block_len = make(chan int, runtime.NumCPU())
+	go block_len_recorder()
 }
 
 var (
@@ -425,6 +441,10 @@ func encodeFloatBlockUsing(buf []byte, values []Value, tsenc TimeEncoder, venc *
 	vb, err := venc.Bytes()
 	if err != nil {
 		return nil, err
+	}
+
+	if len(values) == 1000 {
+		block_len <- len(vb)
 	}
 
 	// Prepend the first timestamp of the block in the first 8 bytes and the block
