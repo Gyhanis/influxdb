@@ -78,7 +78,7 @@ import (
 	"github.com/influxdata/influxdb/v2/tenant"
 
 	// needed for tsm1
-	_ "github.com/influxdata/influxdb/v2/tsdb/engine/tsm1"
+	"github.com/influxdata/influxdb/v2/tsdb/engine/tsm1"
 
 	// needed for tsi1
 	_ "github.com/influxdata/influxdb/v2/tsdb/index/tsi1"
@@ -194,6 +194,12 @@ func (m *Launcher) Shutdown(ctx context.Context) error {
 	if len(errs) > 0 {
 		return fmt.Errorf("failed to shut down server: [%s]", strings.Join(errs, ","))
 	}
+
+	timing, _ := os.Create(tsm1.TimingFile)
+	fmt.Fprintf(timing, "IO time: %v\n", float64(tsm1.TimeIO)/1000/1000)
+	fmt.Fprintf(timing, "Decode time: %v\n", float64(tsm1.TimeDecode)/1000/1000)
+	timing.Close()
+	tsm1.BLFile.Close()
 	return nil
 }
 

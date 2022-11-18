@@ -1,6 +1,9 @@
 package tsm1
 
 import (
+	"sync/atomic"
+	"time"
+
 	"github.com/influxdata/influxdb/v2/tsdb"
 )
 
@@ -50,8 +53,17 @@ func (m *mmapAccessor) read{{.Name}}Block(entry *IndexEntry, values *[]{{.Name}}
 		return nil, ErrTSMClosed
 	}
 
-	a, err := Decode{{.Name}}Block(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
+	tmp := make([]byte, entry.Size)
+	start := time.Now()
+	copy(tmp, m.b[entry.Offset:])
+	durIO := time.Since(start).Microseconds()
+
+	start = time.Now()
+	a, err := Decode{{.Name}}Block(tmp[4:], values)
+	durDecode := int64(time.Since(start).Microseconds())
 	m.mu.RUnlock()
+	atomic.AddInt64(&TimeIO, durIO)
+	atomic.AddInt64(&TimeDecode, durDecode)
 
 	if err != nil {
 		return nil, err
@@ -69,8 +81,17 @@ func (m *mmapAccessor) read{{.Name}}ArrayBlock(entry *IndexEntry, values *tsdb.{
 		return ErrTSMClosed
 	}
 
-	err := Decode{{.Name}}ArrayBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
+	tmp := make([]byte, entry.Size)
+	start := time.Now()
+	copy(tmp, m.b[entry.Offset:])
+	durIO := time.Since(start).Microseconds()
+
+	start = time.Now()
+	err := Decode{{.Name}}ArrayBlock(tmp[4:], values)
+	durDecode := int64(time.Since(start).Microseconds())
 	m.mu.RUnlock()
+	atomic.AddInt64(&TimeIO, durIO)
+	atomic.AddInt64(&TimeDecode, durDecode)
 
 	return err
 }
