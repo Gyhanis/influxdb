@@ -3,7 +3,9 @@ package query
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
+	"time"
 
 	"github.com/influxdata/flux"
 	"github.com/influxdata/flux/csv"
@@ -134,6 +136,7 @@ func (b ProxyQueryServiceAsyncBridge) Query(ctx context.Context, w io.Writer, re
 	span, ctx := tracing.StartSpanFromContext(ctx)
 	defer span.Finish()
 
+	start := time.Now()
 	q, err := b.AsyncQueryService.Query(ctx, &req.Request)
 	if err != nil {
 		return flux.Statistics{}, tracing.LogError(span, err)
@@ -142,23 +145,40 @@ func (b ProxyQueryServiceAsyncBridge) Query(ctx context.Context, w io.Writer, re
 	results := flux.NewResultIteratorFromQuery(q)
 	defer results.Release()
 
-	encoder := req.Dialect.Encoder()
-	_, err = encoder.Encode(w, results)
+	// encoder := req.Dialect.Encoder()
+	// _, err = encoder.Encode(w, results)
+
+	line_cnt_total := 0
+	for results.More() {
+		result := results.Next()
+
+		result.Tables().Do(func(t flux.Table) error {
+			t.Do(func(cr flux.ColReader) error {
+				line_cnt_total += cr.Len()
+				return nil
+			})
+			return nil
+		})
+	}
+
 	// Release the results and collect the statistics regardless of the error.
 	results.Release()
+	dur := time.Since(start)
+	w.Write([]byte(fmt.Sprintf("%v\n%v\n", dur.Seconds(), line_cnt_total)))
+
 	stats := results.Statistics()
 	if err != nil {
 		return stats, tracing.LogError(span, err)
 	}
 
-	if results, err := q.ProfilerResults(); err != nil {
-		return stats, tracing.LogError(span, err)
-	} else if results != nil {
-		_, err = encoder.Encode(w, results)
-		if err != nil {
-			return stats, tracing.LogError(span, err)
-		}
-	}
+	// if results, err := q.ProfilerResults(); err != nil {
+	// 	return stats, tracing.LogError(span, err)
+	// } else if results != nil {
+	// 	_, err = encoder.Encode(w, results)
+	// 	if err != nil {
+	// 		return stats, tracing.LogError(span, err)
+	// 	}
+	// }
 	return stats, nil
 }
 
