@@ -1,7 +1,7 @@
 package tsm1
 
-// #cgo CFLAGS: -I/home/sy/programs/machete/include
-// #cgo LDFLAGS: -L/home/sy/programs/machete/lib -lmachete -lstdc++
+// #cgo CFLAGS: -I../../../../mach/include
+// #cgo LDFLAGS: -L../../../../lib -lmachete
 // #include "Machete_C.h"
 // #include <string.h>
 import "C"
