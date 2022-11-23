@@ -76,7 +76,6 @@ CMDS := \
 	bin/$(GOOS)/influxd
 
 all: generate $(CMDS)
-	cp $(CMDS) /home/sy/tstest3/influxdb/influxd-sz
 
 #
 # Define targets for commands
