@@ -1,6 +1,6 @@
 package tsm1
 
-// #cgo CFLAGS: -I../../../../mach/include
+// #cgo CFLAGS: -I../../../../machete/include
 // #cgo LDFLAGS: -L../../../../lib -lmachete
 // #include "Machete_C.h"
 // #include <string.h>
